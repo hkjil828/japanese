@@ -1,0 +1,274 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover"/>
+<title>日文活用 Flashcard 小遊戲</title>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+
+<style>
+:root {
+    --primary: #4f46e5;
+    --bg: #f6f7fb;
+}
+
+body {
+    margin: 0;
+    background: var(--bg);
+    font-family: system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+}
+
+.container {
+    max-width: 420px;
+    margin: auto;
+    padding: 1rem;
+}
+
+.card-box {
+    background: white;
+    border-radius: 16px;
+    padding: 1.2rem;
+    box-shadow: 0 8px 24px rgba(0,0,0,.08);
+}
+
+h1 {
+    text-align: center;
+    font-size: 1.5rem;
+}
+
+.description {
+    font-size: .9rem;
+    line-height: 1.6;
+    background: #eef2ff;
+    padding: .8rem;
+    border-radius: 10px;
+    margin-bottom: 1rem;
+}
+
+.base {
+    font-size: 2.2rem;
+    font-weight: 700;
+    text-align: center;
+    margin-top: 1rem;
+}
+
+.prompt {
+    text-align: center;
+    margin-top: .4rem;
+    color: #555;
+}
+
+input[type="text"] {
+    width: 100%;
+    padding: .8rem;
+    font-size: 1.1rem;
+    margin-top: 1rem;
+}
+
+button {
+    width: 100%;
+    padding: .9rem;
+    font-size: 1.05rem;
+    margin-top: .6rem;
+    border: none;
+    border-radius: 12px;
+}
+
+.primary {
+    background: var(--primary);
+    color: white;
+}
+
+.secondary {
+    background: #e5e7eb;
+}
+
+.feedback {
+    margin-top: .8rem;
+    font-size: .95rem;
+}
+
+.correct { color: green; }
+.wrong { color: red; }
+
+.answer-box {
+    margin-top: .6rem;
+    background: #f9fafb;
+    border-radius: 12px;
+    padding: .8rem;
+    font-size: .9rem;
+}
+
+.answer-box .base-answer {
+    font-weight: 700;
+    margin-bottom: .4rem;
+}
+
+.answer-box .highlight {
+    font-weight: 700;
+}
+
+.progress {
+    text-align: center;
+    margin-top: .6rem;
+    font-size: .85rem;
+    color: #666;
+}
+
+.loading {
+    text-align: center;
+    padding: 2rem;
+    color: #555;
+}
+</style>
+</head>
+
+<body>
+<div class="container">
+
+<h1>🎴 日文活用 Flashcard</h1>
+
+<div class="description">
+<p>
+📘 自動讀取 <strong>Flash card content.xlsx</strong><br>
+每回合 <strong>20 題</strong，隨機活用。
+</p>
+</div>
+
+<div class="card-box loading" id="loading">
+📂 載入 Excel 中…
+</div>
+
+<div class="card-box" id="game" style="display:none;">
+    <div class="base" id="base"></div>
+    <div class="prompt" id="prompt"></div>
+
+    <input type="text" id="answer" placeholder="輸入答案">
+
+    <button class="primary" onclick="submitAnswer()">送出</button>
+    <button class="secondary" onclick="skipQuestion()">跳過並顯示答案</button>
+    <button class="secondary" id="nextBtn" onclick="goNext()" style="display:none;">
+        下一題
+    </button>
+
+    <div class="feedback" id="feedback"></div>
+    <div class="progress" id="progress"></div>
+</div>
+
+</div>
+
+<script>
+let words = [];
+let current, key;
+let count = 0, correct = 0;
+let skipped = false;
+
+const labels = {
+    過去式: "過去式",
+    否定形: "否定形",
+    否定過去式: "否定過去式",
+    可能形: "可能形"
+};
+
+async function autoLoadExcel() {
+    try {
+        const response = await fetch("Flash card content.xlsx");
+        const data = await response.arrayBuffer();
+        const wb = XLSX.read(data, { type: "array" });
+
+        ["Verb", "i Adj", "Na Adj"].forEach(sheet => {
+            if (!wb.Sheets[sheet]) return;
+            const rows = XLSX.utils.sheet_to_json(wb.Sheets[sheet]);
+
+            rows.forEach(r => {
+                if (!r["基本体"]) return;
+                const forms = {};
+                ["過去式", "否定形", "否定過去式", "可能形"].forEach(k => {
+                    if (r[k] && r[k] !== "—") forms[k] = r[k];
+                });
+                if (Object.keys(forms).length)
+                    words.push({ base: r["基本体"], forms });
+            });
+        });
+
+        document.getElementById("loading").style.display = "none";
+        document.getElementById("game").style.display = "block";
+        next();
+    } catch (err) {
+        document.getElementById("loading").innerHTML =
+            "❌ 無法載入 Flash card content.xlsx<br><br>" +
+            "⚠️ 請使用 http:// 環境開啟此頁面";
+    }
+}
+
+function renderAnswerBox(highlightKey) {
+    let html = `<div class="answer-box">
+        <div class="base-answer">基本体：${current.base}</div>`;
+    for (const k in current.forms) {
+        html += `<div class="${k === highlightKey ? 'highlight' : ''}">
+            ${labels[k]}：${current.forms[k]}
+        </div>`;
+    }
+    html += `</div>`;
+    return html;
+}
+
+function next() {
+    if (count >= 20) {
+        document.getElementById("game").innerHTML =
+            `<h2>✅ 完成</h2>
+             <p>正確 ${correct} / 20</p>
+             <button class="primary" onclick="location.reload()">再玩一次</button>`;
+        return;
+    }
+
+    skipped = false;
+    document.getElementById("nextBtn").style.display = "none";
+
+    current = words[Math.floor(Math.random() * words.length)];
+    key = Object.keys(current.forms)[
+        Math.floor(Math.random() * Object.keys(current.forms).length)
+    ];
+
+    document.getElementById("base").textContent = current.base;
+    document.getElementById("prompt").textContent = `請輸入：${labels[key]}`;
+    document.getElementById("answer").value = "";
+    document.getElementById("feedback").innerHTML = "";
+    document.getElementById("progress").textContent = `第 ${count + 1} / 20 題`;
+}
+
+function submitAnswer() {
+    const ans = document.getElementById("answer").value.trim();
+    if (!ans) return;
+
+    if (ans === current.forms[key]) {
+        correct++;
+        document.getElementById("feedback").innerHTML =
+            `<span class="correct">✅ 正確</span>`;
+        count++;
+        setTimeout(next, 900);
+    } else {
+        document.getElementById("feedback").innerHTML =
+            `<span class="wrong">❌ 錯誤</span>` +
+            renderAnswerBox(key);
+    }
+}
+
+function skipQuestion() {
+    skipped = true;
+    document.getElementById("feedback").innerHTML =
+        `⏭️ 已跳過` + renderAnswerBox(key);
+    document.getElementById("nextBtn").style.display = "block";
+}
+
+function goNext() {
+    if (!skipped) return;
+    count++;
+    next();
+}
+
+autoLoadExcel();
+</script>
+</body>
+</html>
