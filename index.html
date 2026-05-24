@@ -37,15 +37,6 @@ h1 {
     font-size: 1.5rem;
 }
 
-.description {
-    font-size: .9rem;
-    line-height: 1.6;
-    background: #eef2ff;
-    padding: .8rem;
-    border-radius: 10px;
-    margin-bottom: 1rem;
-}
-
 .base {
     font-size: 2.2rem;
     font-weight: 700;
@@ -75,20 +66,10 @@ button {
     border-radius: 12px;
 }
 
-.primary {
-    background: var(--primary);
-    color: white;
-}
+.primary { background: var(--primary); color: white; }
+.secondary { background: #e5e7eb; }
 
-.secondary {
-    background: #e5e7eb;
-}
-
-.feedback {
-    margin-top: .8rem;
-    font-size: .95rem;
-}
-
+.feedback { margin-top: .8rem; font-size: .95rem; }
 .correct { color: green; }
 .wrong { color: red; }
 
@@ -100,13 +81,14 @@ button {
     font-size: .9rem;
 }
 
-.answer-box .base-answer {
+.base-answer {
     font-weight: 700;
     margin-bottom: .4rem;
 }
 
-.answer-box .highlight {
+.highlight {
     font-weight: 700;
+    color: var(--primary);
 }
 
 .progress {
@@ -119,7 +101,6 @@ button {
 .loading {
     text-align: center;
     padding: 2rem;
-    color: #555;
 }
 </style>
 </head>
@@ -129,15 +110,8 @@ button {
 
 <h1>🎴 日文活用 Flashcard</h1>
 
-<div class="description">
-<p>
-📘 自動讀取 <strong>Flash card content.xlsx</strong><br>
-每回合 <strong>20 題</strong，隨機活用。
-</p>
-</div>
-
 <div class="card-box loading" id="loading">
-📂 載入 Excel 中…
+📂 載入 Flash card content.xlsx 中…
 </div>
 
 <div class="card-box" id="game" style="display:none;">
@@ -164,52 +138,54 @@ let current, key;
 let count = 0, correct = 0;
 let skipped = false;
 
-const labels = {
-    過去式: "過去式",
-    否定形: "否定形",
-    否定過去式: "否定過去式",
-    可能形: "可能形"
-};
-
 async function autoLoadExcel() {
     try {
         const response = await fetch("Flash card content.xlsx");
         const data = await response.arrayBuffer();
         const wb = XLSX.read(data, { type: "array" });
 
-        ["Verb", "i Adj", "Na Adj"].forEach(sheet => {
-            if (!wb.Sheets[sheet]) return;
+        wb.SheetNames.forEach(sheet => {
             const rows = XLSX.utils.sheet_to_json(wb.Sheets[sheet]);
 
             rows.forEach(r => {
                 if (!r["基本体"]) return;
+
                 const forms = {};
-                ["過去式", "否定形", "否定過去式", "可能形"].forEach(k => {
-                    if (r[k] && r[k] !== "—") forms[k] = r[k];
+                Object.keys(r).forEach(col => {
+                    if (col !== "基本体" && r[col] && r[col] !== "—") {
+                        forms[col] = r[col];
+                    }
                 });
-                if (Object.keys(forms).length)
-                    words.push({ base: r["基本体"], forms });
+
+                if (Object.keys(forms).length) {
+                    words.push({
+                        base: r["基本体"],
+                        forms
+                    });
+                }
             });
         });
 
         document.getElementById("loading").style.display = "none";
         document.getElementById("game").style.display = "block";
         next();
+
     } catch (err) {
         document.getElementById("loading").innerHTML =
-            "❌ 無法載入 Flash card content.xlsx<br><br>" +
-            "⚠️ 請使用 http:// 環境開啟此頁面";
+            "❌ 無法載入 Excel<br>請確認使用 GitHub Pages 或 http:// 環境";
     }
 }
 
 function renderAnswerBox(highlightKey) {
     let html = `<div class="answer-box">
         <div class="base-answer">基本体：${current.base}</div>`;
-    for (const k in current.forms) {
+
+    Object.keys(current.forms).forEach(k => {
         html += `<div class="${k === highlightKey ? 'highlight' : ''}">
-            ${labels[k]}：${current.forms[k]}
+            ${k}：${current.forms[k]}
         </div>`;
-    }
+    });
+
     html += `</div>`;
     return html;
 }
@@ -227,12 +203,11 @@ function next() {
     document.getElementById("nextBtn").style.display = "none";
 
     current = words[Math.floor(Math.random() * words.length)];
-    key = Object.keys(current.forms)[
-        Math.floor(Math.random() * Object.keys(current.forms).length)
-    ];
+    const keys = Object.keys(current.forms);
+    key = keys[Math.floor(Math.random() * keys.length)];
 
     document.getElementById("base").textContent = current.base;
-    document.getElementById("prompt").textContent = `請輸入：${labels[key]}`;
+    document.getElementById("prompt").textContent = `請輸入：${key}`;
     document.getElementById("answer").value = "";
     document.getElementById("feedback").innerHTML = "";
     document.getElementById("progress").textContent = `第 ${count + 1} / 20 題`;
